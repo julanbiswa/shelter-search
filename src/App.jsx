@@ -15,11 +15,19 @@ function App() {
 
   useEffect(() => {
     // Check if user is already logged in
-    const user = AuthService.getCurrentUser();
-    if (user) {
-      setIsAuthenticated(true);
-    }
-    setLoading(false);
+    const checkAuth = async () => {
+      try {
+        const user = await AuthService.getCurrentUser();
+        if (user) {
+          setIsAuthenticated(true);
+        }
+      } catch (error) {
+        console.error('Auth check failed:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    checkAuth();
   }, []);
 
   if (loading) {

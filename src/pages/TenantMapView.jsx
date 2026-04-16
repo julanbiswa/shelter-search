@@ -1,15 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AuthService } from '../utils/auth';
-import { Storage } from '../utils/storage';
 import { getCurrentLocation, findNearestRooms, getRecommendedRooms, calculateDistance } from '../utils/geolocation';
 import { findRoute } from '../utils/routing';
 import MapComponent from '../components/MapComponent';
 import Toast from '../components/Toast';
+import api from '../utils/api';
 
 const TenantMapView = ({ setIsAuthenticated }) => {
   const navigate = useNavigate();
-  const user = AuthService.getCurrentUser();
+  const [user, setUser] = useState(null);
   const [rooms, setRooms] = useState([]);
   const [userLocation, setUserLocation] = useState(null);
   const [selectedRoom, setSelectedRoom] = useState(null);
@@ -26,15 +26,30 @@ const TenantMapView = ({ setIsAuthenticated }) => {
 
   // Load rooms and get user location
   useEffect(() => {
-    loadData();
-  }, []);
+    const initializeData = async () => {
+      const currentUser = await AuthService.getCurrentUser();
+      if (!currentUser) {
+        navigate('/login');
+        return;
+      }
+      setUser(currentUser);
+    };
+    initializeData();
+  }, [navigate]);
+
+  useEffect(() => {
+    if (user) {
+      loadData();
+    }
+  }, [user]);
 
   const loadData = async () => {
     try {
       setLoading(true);
 
-      // Get all rooms
-      const allRooms = await Storage.getAllRooms();
+      // Get all rooms from API
+      const roomsResponse = await api.get('/shelters');
+      const allRooms = roomsResponse.data || [];
       setRooms(allRooms);
 
       // Get user's current location
@@ -48,7 +63,7 @@ const TenantMapView = ({ setIsAuthenticated }) => {
       const recommended = getRecommendedRooms(location, allRooms, 5, { min: 300, max: 2000 });
       setRecommendedRooms(recommended);
     } catch (error) {
-      setToast({ type: 'error', message: 'Error loading data: ' + error.message });
+      setToast({ type: 'error', message: 'Error loading rooms' });
     } finally {
       setLoading(false);
     }
@@ -130,26 +145,39 @@ const TenantMapView = ({ setIsAuthenticated }) => {
     }
   };
 
-  const handleOpenDirections = () => {
+  const handleOpenDirections = async () => {
     if (!selectedRoom || !userLocation) {
       console.log('Missing data for directions:', { userLocation, selectedRoom });
       setToast({ type: 'error', message: 'Please select a room first' });
       return;
     }
 
-    const googleMapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${userLocation.lat},${userLocation.lng}&destination=${selectedRoom.latitude},${selectedRoom.longitude}&travelmode=walking`;
-    console.log('Opening Google Maps with URL:', googleMapsUrl);
+    try {
+      const response = await api.post('/geolocation/directions', {
+        origin: userLocation,
+        destination: { lat: selectedRoom.latitude, lng: selectedRoom.longitude }
+      });
 
-    window.open(googleMapsUrl, '_blank');
+      const directionsUrl = response.data.url;
+      console.log('Opening directions with URL:', directionsUrl);
 
-    setToast({
-      type: 'success',
-      message: 'Opening directions in Google Maps...'
-    });
+      window.open(directionsUrl, '_blank');
+
+      setToast({
+        type: 'success',
+        message: 'Opening directions...'
+      });
+    } catch (error) {
+      console.error('Error fetching directions:', error);
+      setToast({
+        type: 'error',
+        message: 'Failed to fetch directions. Please try again later.'
+      });
+    }
   };
 
-  const handleLogout = () => {
-    AuthService.logout();
+  const handleLogout = async () => {
+    await AuthService.logout();
     setIsAuthenticated(false);
     navigate('/login');
   };

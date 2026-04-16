@@ -1,38 +1,43 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AuthService } from '../utils/auth';
-import { Storage } from '../utils/storage';
 import RoomUploadForm from '../components/RoomUploadForm';
 import Toast from '../components/Toast';
+import api from '../utils/api';
 
 const OwnerPanel = ({ setIsAuthenticated }) => {
   const navigate = useNavigate();
-  const user = AuthService.getCurrentUser();
+  const [user, setUser] = useState(null);
   const [rooms, setRooms] = useState([]);
   const [showUploadForm, setShowUploadForm] = useState(false);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState(null);
 
   useEffect(() => {
-    loadRooms();
-  }, []);
-
-  const loadRooms = async () => {
-    try {
-      const ownerRooms = await Storage.getRoomsByOwnerId(user.id);
-      setRooms(ownerRooms);
-    } catch (error) {
-      setToast({ type: 'error', message: 'Error loading rooms' });
-    } finally {
-      setLoading(false);
-    }
-  };
+    const fetchUserAndRooms = async () => {
+      try {
+        const currentUser = await AuthService.getCurrentUser();
+        if (!currentUser) {
+          navigate('/login');
+          return;
+        }
+        setUser(currentUser);
+        const roomsResponse = await api.get(`/shelters/owner/${currentUser.id}`);
+        setRooms(roomsResponse.data || []);
+      } catch (error) {
+        setToast({ type: 'error', message: 'Error loading rooms' });
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchUserAndRooms();
+  }, [navigate]);
 
   const handleDeleteRoom = async (roomId) => {
     if (!window.confirm('Are you sure you want to delete this room?')) return;
 
     try {
-      await Storage.deleteRoom(roomId);
+      await api.delete(`/shelters/${roomId}`);
       setRooms(rooms.filter((r) => r.id !== roomId));
       setToast({ type: 'success', message: 'Room deleted successfully' });
     } catch (error) {
@@ -40,8 +45,8 @@ const OwnerPanel = ({ setIsAuthenticated }) => {
     }
   };
 
-  const handleLogout = () => {
-    AuthService.logout();
+  const handleLogout = async () => {
+    await AuthService.logout();
     setIsAuthenticated(false);
     navigate('/login');
   };

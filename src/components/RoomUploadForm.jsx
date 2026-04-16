@@ -1,13 +1,14 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import MapComponent from '../components/MapComponent';
-import { Storage } from '../utils/storage';
 import { AuthService } from '../utils/auth';
-import { fileToBase64 } from '../utils/helpers';
+import { compressImage } from '../utils/helpers';
 import { getCurrentLocation } from '../utils/geolocation';
 import Toast from '../components/Toast';
+import api from '../utils/api';
 
 const RoomUploadForm = ({ onRoomAdded, onCancel }) => {
+  const [user, setUser] = useState(null);
   const { register, handleSubmit, watch, reset, formState: { errors } } = useForm({
     defaultValues: {
       title: '',
@@ -16,10 +17,30 @@ const RoomUploadForm = ({ onRoomAdded, onCancel }) => {
       roomType: 'single',
       numRooms: 1,
       facilities: [],
-      ownerName: AuthService.getCurrentUser()?.name || '',
-      contactNumber: AuthService.getCurrentUser()?.phone || ''
+      ownerName: '',
+      contactNumber: ''
     }
   });
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      const currentUser = await AuthService.getCurrentUser();
+      if (currentUser) {
+        setUser(currentUser);
+        reset({
+          title: '',
+          description: '',
+          price: '',
+          roomType: 'single',
+          numRooms: 1,
+          facilities: [],
+          ownerName: currentUser.name || '',
+          contactNumber: currentUser.phone || ''
+        });
+      }
+    };
+    fetchUser();
+  }, [reset]);
 
   const [selectedLocation, setSelectedLocation] = useState(null);
   const [images, setImages] = useState([]);
@@ -36,9 +57,15 @@ const RoomUploadForm = ({ onRoomAdded, onCancel }) => {
 
     for (const file of files) {
       if (newImages.length < 5) {
-        const base64 = await fileToBase64(file);
-        newImages.push(base64);
-        newPreviews.push(base64);
+        try {
+          // Compress image before storing
+          const compressedBase64 = await compressImage(file, 1200, 1200, 0.7);
+          newImages.push(compressedBase64);
+          newPreviews.push(compressedBase64);
+        } catch (error) {
+          console.error('Error compressing image:', error);
+          setToast({ type: 'error', message: 'Error processing image' });
+        }
       }
     }
 
@@ -88,11 +115,14 @@ const RoomUploadForm = ({ onRoomAdded, onCancel }) => {
       return;
     }
 
+    if (!user) {
+      setToast({ type: 'error', message: 'User not authenticated' });
+      return;
+    }
+
     setLoading(true);
     try {
-      const user = AuthService.getCurrentUser();
       const room = {
-        id: `room_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         ...data,
         price: parseInt(data.price),
         numRooms: parseInt(data.numRooms),
@@ -101,11 +131,10 @@ const RoomUploadForm = ({ onRoomAdded, onCancel }) => {
         longitude: selectedLocation.lng,
         image: images[0],
         images: images,
-        ownerId: user.id,
-        createdAt: new Date().toISOString()
+        ownerId: user.id
       };
 
-      await Storage.addRoom(room);
+      await api.post('/shelters', room);
       setToast({ type: 'success', message: 'Room uploaded successfully!' });
       reset();
       setImages([]);

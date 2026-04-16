@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Storage } from '../utils/storage';
 import { getCurrentLocation, calculateDistance } from '../utils/geolocation';
 import { findRoute } from '../utils/routing';
 import Toast from '../components/Toast';
 import MapComponent from '../components/MapComponent';
+import api from '../utils/api';
 
 const RoomDetails = () => {
   const { roomId } = useParams();
@@ -24,9 +24,9 @@ const RoomDetails = () => {
 
   const loadRoom = async () => {
     try {
-      const roomData = await Storage.getRoomById(roomId);
-      if (roomData) {
-        setRoom(roomData);
+      const response = await api.get(`/shelters/${roomId}`);
+      if (response.data) {
+        setRoom(response.data);
       } else {
         setToast({ type: 'error', message: 'Room not found' });
         setTimeout(() => navigate(-1), 2000);
@@ -89,22 +89,35 @@ const RoomDetails = () => {
     }
   };
 
-  const handleOpenDirections = () => {
+  const handleOpenDirections = async () => {
     if (!room || !userLocation) {
       console.log('Missing data for directions:', { userLocation, room });
       setToast({ type: 'error', message: 'Please enable location to open directions' });
       return;
     }
 
-    const googleMapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${userLocation.lat},${userLocation.lng}&destination=${room.latitude},${room.longitude}&travelmode=walking`;
-    console.log('Opening Google Maps with URL:', googleMapsUrl);
+    try {
+      const response = await api.post('/geolocation/directions', {
+        origin: userLocation,
+        destination: { lat: room.latitude, lng: room.longitude }
+      });
 
-    window.open(googleMapsUrl, '_blank');
+      const directionsUrl = response.data.url;
+      console.log('Opening directions with URL:', directionsUrl);
 
-    setToast({
-      type: 'success',
-      message: 'Opening directions in Google Maps...'
-    });
+      window.open(directionsUrl, '_blank');
+
+      setToast({
+        type: 'success',
+        message: 'Opening directions...'
+      });
+    } catch (error) {
+      console.error('Error fetching directions:', error);
+      setToast({
+        type: 'error',
+        message: 'Failed to fetch directions. Please try again later.'
+      });
+    }
   };
 
   if (loading) {

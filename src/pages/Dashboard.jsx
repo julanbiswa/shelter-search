@@ -1,14 +1,22 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AuthService } from '../utils/auth';
 
 const Dashboard = ({ setIsAuthenticated }) => {
   const navigate = useNavigate();
-  const user = AuthService.getCurrentUser();
+  const [user, setUser] = useState(null);
   const [selectedMode, setSelectedMode] = useState(null);
 
-  const handleLogout = () => {
-    AuthService.logout();
+  useEffect(() => {
+    const fetchUser = async () => {
+      const currentUser = await AuthService.getCurrentUser();
+      setUser(currentUser);
+    };
+    fetchUser();
+  }, []);
+
+  const handleLogout = async () => {
+    await AuthService.logout();
     setIsAuthenticated(false);
     navigate('/login');
   };
